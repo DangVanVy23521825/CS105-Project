@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CS105 - 3D Physics Simulation</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        overflow: hidden;
+        font-family: Inter, Segoe UI, Roboto, Arial, sans-serif;
+        background: #0d1117;
+        color: #c9d1d9;
+      }
+
+      #app {
+        position: fixed;
+        inset: 0;
+      }
+
+      #overlay {
+        position: fixed;
+        right: 12px;
+        bottom: 12px;
+        max-width: 360px;
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        background: rgba(14, 17, 24, 0.8);
+        backdrop-filter: blur(4px);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      #overlay b {
+        color: #58a6ff;
+      }
+
+      #imageInput,
+      #modelInput {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <input id="imageInput" type="file" accept="image/*" />
+    <input id="modelInput" type="file" accept=".glb,.gltf,.obj" />
+    <div id="overlay">
+      <div><b>CS105 - 3D Physics Simulation</b></div>
+      <div>Chuột trái: Chọn đối tượng | Chuột phải: Orbit camera</div>
+      <div>W/A/S/D: Lực ngang | Q/E: Quay | Z/X: Scale</div>
+      <div>F: Toggle animation | R: Reset scene</div>
+    </div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.166.1/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.166.1/examples/jsm/",
+          "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js",
+          "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm",
+          "stats.js": "https://cdn.jsdelivr.net/npm/stats.js@0.17.0/src/Stats.js"
+        }
+      }
+    </script>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
