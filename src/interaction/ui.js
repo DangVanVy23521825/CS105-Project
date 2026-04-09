@@ -1,27 +1,33 @@
 import GUI from "lil-gui";
-import Stats from "stats.js";
 import * as THREE from "three";
 
 export function createUI({
   camera,
   lights,
-  onSceneChange,
-  onSpawn,
   onPhysicsChange,
-  onDebugChange,
   getSelected,
   setTextureForSelected,
-  openImagePicker,
   onRampAngleChange
 }) {
-  const gui = new GUI({ title: "CS105 Controls", width: 330 });
-  const stats = new Stats();
-  stats.showPanel(0);
-  document.body.appendChild(stats.dom);
+  const gui = new GUI({ title: "⚙ Properties", width: 300 });
+  gui.domElement.style.position = "fixed";
+  gui.domElement.style.top = "56px";
+  gui.domElement.style.right = "12px";
+  gui.domElement.style.zIndex = "25";
+
+  // ─── Stats.js (FPS) ───
+  const statsContainer = document.getElementById("statsContainer");
+  let stats = null;
+  try {
+    const StatsModule = window.Stats || null;
+    if (StatsModule) {
+      stats = new StatsModule();
+      stats.showPanel(0);
+      statsContainer?.appendChild(stats.dom);
+    }
+  } catch (_) { /* fallback: no stats */ }
 
   const params = {
-    scene: "Inclined Plane",
-    spawnType: "Box",
     near: camera.near,
     far: camera.far,
     fov: camera.fov,
@@ -31,147 +37,78 @@ export function createUI({
     friction: 0.4,
     restitution: 0.35,
     rampAngleDeg: 27,
-    debugMode: false,
     texturePreset: "grid",
     selectedColor: "#9ca3af",
     selectedShininess: 50,
     selectedSpecular: "#ffffff"
   };
 
-  const sceneFolder = gui.addFolder("Scenes");
-  sceneFolder
-    .add(params, "scene", [
-      "Inclined Plane",
-      "Free Fall",
-      "Horizontal Force",
-      "Collision Playground"
-    ])
-    .name("Current Scene")
-    .onChange((value) => onSceneChange(value));
-  sceneFolder
-    .add(params, "rampAngleDeg", 5, 55, 1)
-    .name("Ramp Angle")
-    .onChange((deg) => onRampAngleChange(THREE.MathUtils.degToRad(deg)));
-  sceneFolder.open();
-
-  const spawnFolder = gui.addFolder("Create Objects");
-  spawnFolder
-    .add(params, "spawnType", ["Box", "Sphere", "Cone", "Cylinder", "Wheel", "Teapot"])
-    .name("Shape");
-  spawnFolder.add({ create: () => onSpawn(params.spawnType) }, "create").name("Spawn");
-  spawnFolder.open();
-
-  const cameraFolder = gui.addFolder("Projection (Perspective)");
-  cameraFolder
-    .add(params, "fov", 25, 110, 1)
-    .name("FOV")
-    .onChange((value) => {
-      camera.fov = value;
-      camera.updateProjectionMatrix();
-    });
-  cameraFolder
-    .add(params, "near", 0.01, 10, 0.01)
-    .name("Near")
-    .onChange((value) => {
-      camera.near = value;
-      if (camera.near >= camera.far) {
-        camera.near = Math.max(0.01, camera.far - 0.1);
-        params.near = camera.near;
-      }
-      camera.updateProjectionMatrix();
-    });
-  cameraFolder
-    .add(params, "far", 20, 400, 1)
-    .name("Far")
-    .onChange((value) => {
-      camera.far = value;
-      if (camera.far <= camera.near) {
-        camera.far = camera.near + 5;
-        params.far = camera.far;
-      }
-      camera.updateProjectionMatrix();
-    });
-
-  const lightFolder = gui.addFolder("Lighting (Phong)");
-  lightFolder.add(params, "ambient", 0, 2, 0.01).name("Ambient").onChange((v) => {
-    lights.ambientLight.intensity = v;
+  // ─── Camera / Projection ───
+  const camFolder = gui.addFolder("📷 Phép chiếu phối cảnh");
+  camFolder.add(params, "fov", 25, 120, 1).name("FOV").onChange((v) => {
+    camera.fov = v; camera.updateProjectionMatrix();
   });
-  lightFolder.add(params, "point", 0, 120, 1).name("Point").onChange((v) => {
-    lights.pointLight.intensity = v;
+  camFolder.add(params, "near", 0.01, 10, 0.01).name("Near").onChange((v) => {
+    camera.near = Math.min(v, camera.far - 0.1); params.near = camera.near;
+    camera.updateProjectionMatrix();
   });
-  lightFolder
-    .add(params, "directional", 0, 2.5, 0.01)
-    .name("Directional")
-    .onChange((v) => {
-      lights.directionalLight.intensity = v;
-    });
+  camFolder.add(params, "far", 20, 500, 1).name("Far").onChange((v) => {
+    camera.far = Math.max(v, camera.near + 5); params.far = camera.far;
+    camera.updateProjectionMatrix();
+  });
 
-  const physicsFolder = gui.addFolder("Physics Material");
-  physicsFolder
-    .add(params, "friction", 0, 1, 0.01)
-    .name("Friction")
-    .onChange((value) => onPhysicsChange({ friction: value, restitution: params.restitution }));
-  physicsFolder
-    .add(params, "restitution", 0, 1, 0.01)
-    .name("Restitution")
-    .onChange((value) => onPhysicsChange({ friction: params.friction, restitution: value }));
+  // ─── Lighting ───
+  const lightFolder = gui.addFolder("💡 Chiếu sáng (Phong)");
+  lightFolder.add(params, "ambient", 0, 2, 0.01).name("Ambient").onChange((v) => { lights.ambientLight.intensity = v; });
+  lightFolder.add(params, "point", 0, 120, 1).name("Point Light").onChange((v) => { lights.pointLight.intensity = v; });
+  lightFolder.add(params, "directional", 0, 3, 0.01).name("Directional").onChange((v) => { lights.directionalLight.intensity = v; });
 
-  const textureFolder = gui.addFolder("Texture Mapping");
-  textureFolder
-    .add(params, "texturePreset", ["grid", "wood", "metal"])
-    .name("Preset")
-    .onChange((name) => setTextureForSelected(name));
-  textureFolder.add({ upload: openImagePicker }, "upload").name("Load bitmap");
+  // ─── Physics ───
+  const physFolder = gui.addFolder("⚡ Vật liệu vật lý");
+  physFolder.add(params, "friction", 0, 1, 0.01).name("Ma sát μ").onChange((v) => onPhysicsChange({ friction: v, restitution: params.restitution }));
+  physFolder.add(params, "restitution", 0, 1, 0.01).name("Đàn hồi e").onChange((v) => onPhysicsChange({ friction: params.friction, restitution: v }));
+  physFolder.add(params, "rampAngleDeg", 5, 60, 1).name("Góc ramp θ°").onChange((deg) => onRampAngleChange(THREE.MathUtils.degToRad(deg)));
 
-  const selectedFolder = gui.addFolder("Selected Object");
-  selectedFolder
-    .addColor(params, "selectedColor")
-    .name("Color")
-    .onChange((value) => {
-      const target = getSelected();
-      if (!target) return;
-      target.mesh.material.color.set(value);
-    });
-  selectedFolder
-    .addColor(params, "selectedSpecular")
-    .name("Specular")
-    .onChange((value) => {
-      const target = getSelected();
-      if (!target) return;
-      target.mesh.material.specular.set(value);
-    });
-  selectedFolder
-    .add(params, "selectedShininess", 1, 120, 1)
-    .name("Shininess")
-    .onChange((value) => {
-      const target = getSelected();
-      if (!target) return;
-      target.mesh.material.shininess = value;
-    });
+  // ─── Texture ───
+  const texFolder = gui.addFolder("🖼️ Texture Mapping");
+  texFolder.add(params, "texturePreset", ["grid", "wood", "metal", "brick", "marble", "checker", "lava", "grass"]).name("Preset").onChange((name) => setTextureForSelected(name));
 
-  gui
-    .add(params, "debugMode")
-    .name("Debug Mode")
-    .onChange((enabled) => onDebugChange(enabled));
+  // ─── Selected Object ───
+  const selFolder = gui.addFolder("🎯 Đối tượng đang chọn");
+  selFolder.addColor(params, "selectedColor").name("Màu sắc").onChange((v) => {
+    const t = getSelected();
+    if (!t) return;
+    const apply = (m) => { if (m.material?.color) m.material.color.set(v); };
+    if (t.mesh.isMesh) apply(t.mesh); else t.mesh.traverse((c) => { if (c.isMesh) apply(c); });
+  });
+  selFolder.addColor(params, "selectedSpecular").name("Specular").onChange((v) => {
+    const t = getSelected();
+    if (!t) return;
+    const apply = (m) => { if (m.material?.specular) m.material.specular.set(v); };
+    if (t.mesh.isMesh) apply(t.mesh); else t.mesh.traverse((c) => { if (c.isMesh) apply(c); });
+  });
+  selFolder.add(params, "selectedShininess", 1, 128, 1).name("Shininess").onChange((v) => {
+    const t = getSelected();
+    if (!t) return;
+    const apply = (m) => { if (m.material) m.material.shininess = v; };
+    if (t.mesh.isMesh) apply(t.mesh); else t.mesh.traverse((c) => { if (c.isMesh) apply(c); });
+  });
 
   function syncFromSelected() {
-    const selected = getSelected();
-    if (!selected) return;
-    params.selectedColor = `#${selected.mesh.material.color.getHexString()}`;
-    params.selectedSpecular = `#${selected.mesh.material.specular.getHexString()}`;
-    params.selectedShininess = selected.mesh.material.shininess;
+    const sel = getSelected();
+    if (!sel) return;
+    const mat = sel.mesh.isMesh ? sel.mesh.material : null;
+    if (mat) {
+      params.selectedColor = `#${mat.color.getHexString()}`;
+      params.selectedSpecular = `#${(mat.specular || new THREE.Color(0xffffff)).getHexString()}`;
+      params.selectedShininess = mat.shininess || 50;
+    }
   }
 
   function dispose() {
     gui.destroy();
-    stats.dom.remove();
+    stats?.dom?.remove();
   }
 
-  return {
-    gui,
-    stats,
-    params,
-    syncFromSelected,
-    dispose
-  };
+  return { gui, stats, params, syncFromSelected, dispose };
 }

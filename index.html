@@ -3,63 +3,499 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CS105 - 3D Physics Simulation</title>
+    <title>CS105 — 3D Physics Simulation</title>
     <style>
       :root {
         color-scheme: dark;
+        --bg: #080c14;
+        --panel: rgba(12, 18, 32, 0.88);
+        --panel-border: rgba(56, 189, 248, 0.12);
+        --accent: #38bdf8;
+        --accent2: #818cf8;
+        --accent3: #f59e0b;
+        --green: #34d399;
+        --red: #f87171;
+        --text: #e2e8f0;
+        --text2: #94a3b8;
+        --text3: #64748b;
+        --surface: rgba(30, 41, 59, 0.55);
+        --hover: rgba(56, 189, 248, 0.08);
+        --radius: 10px;
+        --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        --mono: "SF Mono", "Cascadia Code", Consolas, monospace;
+        --sidebar-w: 272px;
+        --hud-h: 52px;
       }
 
-      * {
-        box-sizing: border-box;
-      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
 
       body {
-        margin: 0;
         overflow: hidden;
-        font-family: Inter, Segoe UI, Roboto, Arial, sans-serif;
-        background: #0d1117;
-        color: #c9d1d9;
+        font-family: var(--font);
+        background: var(--bg);
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.45;
       }
 
-      #app {
+      /* ─── Viewport ─── */
+      #viewport {
         position: fixed;
         inset: 0;
+        left: var(--sidebar-w);
       }
 
-      #overlay {
+      /* ─── Sidebar ─── */
+      #sidebar {
         position: fixed;
-        right: 12px;
-        bottom: 12px;
-        max-width: 360px;
-        padding: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        top: 0; left: 0; bottom: 0;
+        width: var(--sidebar-w);
+        background: var(--panel);
+        border-right: 1px solid var(--panel-border);
+        backdrop-filter: blur(24px);
+        display: flex;
+        flex-direction: column;
+        z-index: 20;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: thin;
+        scrollbar-color: var(--text3) transparent;
+      }
+      #sidebar::-webkit-scrollbar { width: 4px; }
+      #sidebar::-webkit-scrollbar-thumb { background: var(--text3); border-radius: 4px; }
+
+      .sb-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 18px 16px 14px;
+        border-bottom: 1px solid var(--panel-border);
+      }
+      .sb-header .logo {
+        width: 38px; height: 38px;
         border-radius: 10px;
-        background: rgba(14, 17, 24, 0.8);
-        backdrop-filter: blur(4px);
+        background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px;
+        flex-shrink: 0;
+      }
+      .sb-header h1 { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; }
+      .sb-header p  { font-size: 11px; color: var(--text2); margin-top: 1px; }
+
+      .sb-section {
+        padding: 12px 14px 4px;
+      }
+      .sb-section h3 {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1.1px;
+        color: var(--text3);
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+
+      /* Scene cards */
+      .scene-cards { display: flex; flex-direction: column; gap: 4px; }
+      .scene-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 12px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text2);
+        cursor: pointer;
+        transition: all .18s;
+        text-align: left;
+        font-size: 12.5px;
+        font-family: inherit;
+      }
+      .scene-card:hover { background: var(--hover); color: var(--text); }
+      .scene-card.active {
+        background: rgba(56,189,248,0.1);
+        border-color: var(--accent);
+        color: var(--text);
+      }
+      .scene-card .sc-icon {
+        width: 30px; height: 30px;
+        border-radius: 7px;
+        background: var(--surface);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 15px;
+        flex-shrink: 0;
+      }
+      .scene-card.active .sc-icon { background: rgba(56,189,248,0.18); }
+      .scene-card .sc-name { font-weight: 500; }
+      .scene-card .sc-eq   { font-size: 10px; color: var(--text3); font-family: var(--mono); }
+
+      /* Spawn grid */
+      .spawn-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 5px;
+      }
+      .spawn-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        padding: 10px 4px 7px;
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--text2);
+        cursor: pointer;
+        transition: all .18s;
+        font-family: inherit;
+      }
+      .spawn-btn:hover {
+        background: var(--hover);
+        border-color: var(--accent);
+        color: var(--text);
+        transform: translateY(-1px);
+      }
+      .spawn-btn .sp-icon { font-size: 19px; }
+      .spawn-btn small    { font-size: 9.5px; }
+
+      /* Object list */
+      .obj-list {
+        display: flex; flex-direction: column; gap: 2px;
+        max-height: 220px;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--text3) transparent;
+      }
+      .obj-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all .14s;
         font-size: 12px;
-        line-height: 1.5;
+        color: var(--text2);
+        border: 1px solid transparent;
+      }
+      .obj-item:hover { background: var(--hover); color: var(--text); }
+      .obj-item.active { background: rgba(56,189,248,0.1); border-color: rgba(56,189,248,0.3); color: var(--text); }
+      .obj-item .obj-name { display: flex; align-items: center; gap: 6px; }
+      .obj-item .obj-dot  { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+      .obj-item .obj-del {
+        width: 20px; height: 20px;
+        border: none; border-radius: 4px;
+        background: transparent;
+        color: var(--text3);
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 13px;
+        opacity: 0;
+        transition: .14s;
+      }
+      .obj-item:hover .obj-del { opacity: 1; }
+      .obj-item .obj-del:hover { background: rgba(248,113,113,0.15); color: var(--red); }
+
+      /* Action buttons */
+      .action-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+      .act-btn {
+        flex: 1 1 calc(50% - 3px);
+        padding: 8px 6px;
+        border: 1px solid var(--panel-border);
+        border-radius: 7px;
+        background: var(--surface);
+        color: var(--text2);
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 11.5px;
+        font-weight: 500;
+        transition: .18s;
+        display: flex; align-items: center; justify-content: center; gap: 5px;
+      }
+      .act-btn:hover { border-color: var(--accent); color: var(--text); background: var(--hover); }
+
+      /* Environment preset */
+      .env-row {
+        display: flex; gap: 4px;
+      }
+      .env-btn {
+        flex: 1;
+        padding: 7px 4px;
+        border: 1px solid var(--panel-border);
+        border-radius: 7px;
+        background: var(--surface);
+        color: var(--text2);
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 10.5px;
+        font-weight: 500;
+        transition: .18s;
+        text-align: center;
+      }
+      .env-btn:hover { border-color: var(--accent); color: var(--text); }
+      .env-btn.active { background: rgba(56,189,248,0.12); border-color: var(--accent); color: var(--accent); }
+
+      /* ─── Transform Toolbar ─── */
+      #transformBar {
+        position: fixed;
+        top: 12px;
+        left: calc(var(--sidebar-w) + 12px);
+        display: flex;
+        gap: 4px;
+        z-index: 15;
+      }
+      .tf-btn {
+        padding: 7px 14px;
+        border: 1px solid var(--panel-border);
+        border-radius: 7px;
+        background: var(--panel);
+        backdrop-filter: blur(12px);
+        color: var(--text2);
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        transition: .18s;
+      }
+      .tf-btn:hover { border-color: var(--accent); color: var(--text); }
+      .tf-btn.active { background: rgba(56,189,248,0.15); border-color: var(--accent); color: var(--accent); }
+
+      /* ─── HUD Bar ─── */
+      #hud {
+        position: fixed;
+        bottom: 0;
+        left: var(--sidebar-w);
+        right: 0;
+        height: var(--hud-h);
+        background: var(--panel);
+        border-top: 1px solid var(--panel-border);
+        backdrop-filter: blur(24px);
+        display: flex;
+        align-items: center;
+        padding: 0 18px;
+        gap: 24px;
+        z-index: 15;
+        font-size: 12px;
+      }
+      .hg { display: flex; align-items: center; gap: 6px; }
+      .hg-label { color: var(--text3); font-size: 10px; text-transform: uppercase; letter-spacing: .7px; font-weight: 600; }
+      .hg-val   { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+      .hg-val.warn { color: var(--accent3); }
+      .hg-val.ok   { color: var(--green); }
+      #hudFormula {
+        margin-left: auto;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--accent3);
+        max-width: 400px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
-      #overlay b {
-        color: #58a6ff;
+      /* ─── Shortcuts Overlay ─── */
+      #shortcutsOverlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.7);
+        backdrop-filter: blur(8px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .25s;
+      }
+      #shortcutsOverlay.show { opacity: 1; pointer-events: auto; }
+      .sc-panel {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 14px;
+        padding: 28px 32px;
+        max-width: 540px;
+        width: 90%;
+      }
+      .sc-panel h2 { font-size: 18px; margin-bottom: 16px; color: var(--accent); }
+      .sc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px; }
+      .sc-row { display: flex; justify-content: space-between; gap: 12px; }
+      .sc-key {
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: var(--surface);
+        border: 1px solid var(--panel-border);
+        color: var(--accent);
+      }
+      .sc-desc { color: var(--text2); font-size: 12px; }
+
+      /* ─── lil-gui overrides ─── */
+      .lil-gui {
+        --background-color: rgba(12,18,32,0.92) !important;
+        --title-background-color: rgba(20,30,50,0.95) !important;
+        --widget-color: rgba(30,41,59,0.7) !important;
+        --hover-color: rgba(56,189,248,0.1) !important;
+        --focus-color: #38bdf8 !important;
+        --number-color: #38bdf8 !important;
+        --string-color: #a78bfa !important;
+        --text-color: #e2e8f0 !important;
+        --title-text-color: #e2e8f0 !important;
+        --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        --font-size: 12px !important;
+        border: 1px solid rgba(56,189,248,0.12) !important;
+        border-radius: 12px !important;
+        backdrop-filter: blur(20px) !important;
       }
 
-      #imageInput,
-      #modelInput {
-        display: none;
+      /* ─── Stats.js position ─── */
+      #statsContainer {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        z-index: 30;
+        opacity: 0.85;
       }
+      #statsContainer canvas { border-radius: 6px !important; }
+
+      .hidden { display: none !important; }
+
+      #imageInput, #modelInput { display: none; }
     </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="viewport"></div>
+
+    <!-- ─── Sidebar ─── -->
+    <aside id="sidebar">
+      <div class="sb-header">
+        <div class="logo">⚛</div>
+        <div>
+          <h1>CS105 Physics</h1>
+          <p>3D Simulation Engine</p>
+        </div>
+      </div>
+
+      <div class="sb-section">
+        <h3>Cảnh mô phỏng</h3>
+        <div id="sceneCards" class="scene-cards">
+          <button class="scene-card active" data-scene="Inclined Plane">
+            <span class="sc-icon">⛰</span>
+            <span><span class="sc-name">Mặt phẳng nghiêng</span><br><span class="sc-eq">a = g sinθ − μg cosθ</span></span>
+          </button>
+          <button class="scene-card" data-scene="Free Fall">
+            <span class="sc-icon">🍎</span>
+            <span><span class="sc-name">Rơi tự do</span><br><span class="sc-eq">s = ½gt²</span></span>
+          </button>
+          <button class="scene-card" data-scene="Horizontal Force">
+            <span class="sc-icon">👉</span>
+            <span><span class="sc-name">Lực ngang &amp; ma sát</span><br><span class="sc-eq">F − f = ma</span></span>
+          </button>
+          <button class="scene-card" data-scene="Collision Playground">
+            <span class="sc-icon">💥</span>
+            <span><span class="sc-name">Va chạm đàn hồi</span><br><span class="sc-eq">m₁v₁ + m₂v₂ = const</span></span>
+          </button>
+          <button class="scene-card" data-scene="Domino Chain">
+            <span class="sc-icon">🀄</span>
+            <span><span class="sc-name">Hiệu ứng Domino</span><br><span class="sc-eq">Phản ứng dây chuyền</span></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="sb-section">
+        <h3>Tạo đối tượng</h3>
+        <div id="spawnGrid" class="spawn-grid">
+          <button class="spawn-btn" data-shape="Box"><span class="sp-icon">◻️</span><small>Hộp</small></button>
+          <button class="spawn-btn" data-shape="Sphere"><span class="sp-icon">⚪</span><small>Cầu</small></button>
+          <button class="spawn-btn" data-shape="Cone"><span class="sp-icon">🔺</span><small>Nón</small></button>
+          <button class="spawn-btn" data-shape="Cylinder"><span class="sp-icon">🛢️</span><small>Trụ</small></button>
+          <button class="spawn-btn" data-shape="Wheel"><span class="sp-icon">⭕</span><small>Bánh xe</small></button>
+          <button class="spawn-btn" data-shape="Teapot"><span class="sp-icon">🫖</span><small>Ấm trà</small></button>
+          <button class="spawn-btn" data-shape="TorusKnot"><span class="sp-icon">🔗</span><small>Nút xoắn</small></button>
+          <button class="spawn-btn" data-shape="Dodecahedron"><span class="sp-icon">⬡</span><small>12 mặt</small></button>
+          <button class="spawn-btn" data-shape="Icosahedron"><span class="sp-icon">🔷</span><small>20 mặt</small></button>
+          <button class="spawn-btn" data-shape="Octahedron"><span class="sp-icon">💎</span><small>8 mặt</small></button>
+          <button class="spawn-btn" data-shape="Capsule"><span class="sp-icon">💊</span><small>Capsule</small></button>
+          <button class="spawn-btn" data-shape="Lathe"><span class="sp-icon">🏺</span><small>Lathe</small></button>
+        </div>
+      </div>
+
+      <div class="sb-section">
+        <h3>Đối tượng trong cảnh</h3>
+        <div id="objectList" class="obj-list"></div>
+      </div>
+
+      <div class="sb-section">
+        <h3>Môi trường</h3>
+        <div class="env-row">
+          <button class="env-btn active" data-env="night">🌙 Đêm</button>
+          <button class="env-btn" data-env="day">☀️ Ngày</button>
+          <button class="env-btn" data-env="sunset">🌅 Hoàng hôn</button>
+          <button class="env-btn" data-env="studio">💡 Studio</button>
+        </div>
+      </div>
+
+      <div class="sb-section">
+        <h3>Hành động</h3>
+        <div class="action-row">
+          <button class="act-btn" id="btnReset">🔄 Reset</button>
+          <button class="act-btn" id="btnScreenshot">📸 Chụp ảnh</button>
+          <button class="act-btn" id="btnLoadModel">📂 Model</button>
+          <button class="act-btn" id="btnLoadTexture">🖼️ Texture</button>
+          <button class="act-btn" id="btnToggleAnim">▶ Animation</button>
+          <button class="act-btn" id="btnShortcuts">⌨ Phím tắt</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ─── Transform Toolbar ─── -->
+    <div id="transformBar">
+      <button class="tf-btn active" data-mode="translate">⬆ Tịnh tiến (G)</button>
+      <button class="tf-btn" data-mode="rotate">↻ Quay (R)</button>
+      <button class="tf-btn" data-mode="scale">⤢ Tỉ lệ (T)</button>
+    </div>
+
+    <!-- ─── HUD Bar ─── -->
+    <div id="hud">
+      <div class="hg"><span class="hg-label">Chọn</span><span class="hg-val" id="hudName">—</span></div>
+      <div class="hg"><span class="hg-label">Vị trí</span><span class="hg-val" id="hudPos">—</span></div>
+      <div class="hg"><span class="hg-label">Vận tốc</span><span class="hg-val warn" id="hudVel">—</span></div>
+      <div class="hg"><span class="hg-label">KL</span><span class="hg-val" id="hudMass">—</span></div>
+      <div class="hg"><span class="hg-label">Năng lượng</span><span class="hg-val ok" id="hudEnergy">—</span></div>
+      <span id="hudFormula">—</span>
+    </div>
+
+    <!-- ─── FPS Stats ─── -->
+    <div id="statsContainer"></div>
+
+    <!-- ─── Shortcuts Overlay ─── -->
+    <div id="shortcutsOverlay">
+      <div class="sc-panel">
+        <h2>⌨ Phím tắt</h2>
+        <div class="sc-grid">
+          <div class="sc-row"><span class="sc-key">W A S D</span><span class="sc-desc">Tác dụng lực ngang</span></div>
+          <div class="sc-row"><span class="sc-key">Q / E</span><span class="sc-desc">Quay đối tượng</span></div>
+          <div class="sc-row"><span class="sc-key">Z / X</span><span class="sc-desc">Phóng to / thu nhỏ</span></div>
+          <div class="sc-row"><span class="sc-key">Space</span><span class="sc-desc">Bắn lên trên</span></div>
+          <div class="sc-row"><span class="sc-key">G</span><span class="sc-desc">Chế độ tịnh tiến</span></div>
+          <div class="sc-row"><span class="sc-key">R</span><span class="sc-desc">Chế độ quay</span></div>
+          <div class="sc-row"><span class="sc-key">T</span><span class="sc-desc">Chế độ tỉ lệ</span></div>
+          <div class="sc-row"><span class="sc-key">F</span><span class="sc-desc">Bật/tắt animation</span></div>
+          <div class="sc-row"><span class="sc-key">P</span><span class="sc-desc">Reset scene</span></div>
+          <div class="sc-row"><span class="sc-key">B</span><span class="sc-desc">Bật/tắt debug</span></div>
+          <div class="sc-row"><span class="sc-key">Delete</span><span class="sc-desc">Xoá đối tượng chọn</span></div>
+          <div class="sc-row"><span class="sc-key">?</span><span class="sc-desc">Hiện/ẩn bảng này</span></div>
+        </div>
+      </div>
+    </div>
+
     <input id="imageInput" type="file" accept="image/*" />
     <input id="modelInput" type="file" accept=".glb,.gltf,.obj" />
-    <div id="overlay">
-      <div><b>CS105 - 3D Physics Simulation</b></div>
-      <div>Chuột trái: Chọn đối tượng | Chuột phải: Orbit camera</div>
-      <div>W/A/S/D: Lực ngang | Q/E: Quay | Z/X: Scale</div>
-      <div>F: Toggle animation | R: Reset scene</div>
-    </div>
 
     <script type="importmap">
       {
@@ -67,8 +503,7 @@
           "three": "https://unpkg.com/three@0.166.1/build/three.module.js",
           "three/addons/": "https://unpkg.com/three@0.166.1/examples/jsm/",
           "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js",
-          "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm",
-          "stats.js": "https://cdn.jsdelivr.net/npm/stats.js@0.17.0/src/Stats.js"
+          "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm"
         }
       }
     </script>

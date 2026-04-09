@@ -1,50 +1,90 @@
-# Do an CS105 - Ung dung mo phong vat ly 3D
+# CS105 — Ứng dụng mô phỏng vật lý 3D
 
-Du an mo phong vat ly + do hoa 3D dung `Three.js` va `cannon-es`, bo tri theo kien truc module de de bao tri va de trinh bay khi van dap.
+Đồ án môn Đồ hoạ máy tính (CS105) — UIT.  
+Mô phỏng vật lý + đồ hoạ 3D dùng **Three.js** và **cannon-es**, kiến trúc module ES6.
 
-## Chay du an
-
-Vi du an dung ES Modules + CDN, ban chi can mot static server:
+## Chạy dự án
 
 ```bash
+cd CS105
 python3 -m http.server 5500
 ```
 
-Sau do mo: `http://localhost:5500`
+Mở trình duyệt: `http://localhost:5500`
 
-## Tinh nang da trien khai
+## Tính năng
 
-- Ve khoi co ban: hop, cau, non, tru, banh xe (torus), am tra (teapot)
-- Load model tu file cuc bo (`.glb/.gltf/.obj`)
-- Perspective projection voi tham so `fov`, `near`, `far`
-- Bien doi affine: tinh tien (luc W/A/S/D), quay (`Q/E`), scale (`Z/X`)
-- He thong chieu sang Phong: ambient + point + directional
-- Bong do shadow mapping (`PCFSoftShadowMap`)
-- Texture mapping: preset (`grid`, `wood`, `metal`) + load bitmap tu file
-- Raycasting de chon doi tuong, to sang emissive khi duoc chon
-- 4 canh vat ly:
-  - Inclined Plane
-  - Free Fall
-  - Horizontal Force
-  - Collision Playground
-- Debug mode: wireframe, box helper, camera frustum helper
-- FPS monitor (Stats.js)
+### Hình học 3D (12 loại)
+Hộp, Cầu, Nón, Trụ, Bánh xe (Torus), Ấm trà (Teapot), Nút xoắn (TorusKnot), 12 mặt (Dodecahedron), 20 mặt (Icosahedron), 8 mặt (Octahedron), Capsule, Lathe.
 
-## Phim tat
+### Load model từ file
+Hỗ trợ `.glb`, `.gltf`, `.obj` — tự tạo bounding box physics.
 
-- Chuot trai: chon doi tuong
-- Chuot phai + keo: orbit camera
-- `W/A/S/D`: tac dung luc ngang len doi tuong duoc chon
-- `Q/E`: quay doi tuong duoc chon
-- `Z/X`: phong to/thu nho doi tuong duoc chon
-- `F`: bat/tat animation bonus
-- `R`: reset scene hien tai
+### Phép chiếu phối cảnh
+Chỉnh `FOV`, `near`, `far` realtime qua panel bên phải.
 
-## Mapping voi kien thuc do hoa
+### Biến đổi Affine
+- **Tịnh tiến**: kéo bằng TransformControls hoặc lực W/A/S/D
+- **Quay**: TransformControls hoặc Q/E
+- **Tỉ lệ**: TransformControls hoặc Z/X (đồng bộ mesh + physics body)
 
-- **Transformation**: cap nhat `mesh` va `body` khi rotate/scale
-- **Projection**: camera perspective co slider `near/far/fov`
-- **Lighting**: `MeshPhongMaterial` + 3 nguon sang
-- **Shadow**: directional light cast shadow + PCF soft shadow map
-- **Texture**: UV mapping tren geometry + repeat wrapping
-- **Physics**: dong bo `mesh <- body` moi frame va dieu chinh friction/restitution realtime
+### Chiếu sáng (Phong)
+- Ambient Light
+- Hemisphere Light
+- Point Light × 2
+- Directional Light (cast shadow)
+- Chỉnh intensity realtime
+
+### Bóng đổ (Shadow Mapping)
+- PCFSoftShadowMap
+- Shadow bias + radius tuỳ chỉnh
+
+### Texture Mapping
+8 preset (grid, wood, metal, brick, marble, checker, lava, grass) + upload ảnh bitmap.
+
+### 5 Scene mô phỏng vật lý
+1. **Mặt phẳng nghiêng** — `a = g sin(θ) − μg cos(θ)`
+2. **Rơi tự do** — `s = ½gt²`
+3. **Lực ngang & ma sát** — `F − f = ma`
+4. **Va chạm đàn hồi** — bảo toàn động lượng
+5. **Hiệu ứng Domino** — phản ứng dây chuyền
+
+### Tính năng nâng cao
+- **TransformControls**: kéo/quay/scale trực quan bằng gizmo
+- **Raycasting**: click chọn đối tượng, highlight emissive
+- **Hiệu ứng va chạm**: particles khi va đập mạnh
+- **Môi trường**: 4 preset (Đêm, Ngày, Hoàng hôn, Studio) — thay đổi fog, sky, ánh sáng
+- **HUD realtime**: vị trí, vận tốc, khối lượng, năng lượng (KE + PE)
+- **Object list**: xem/chọn/xoá đối tượng trong sidebar
+- **Debug mode**: wireframe, bounding box, camera frustum
+- **Screenshot**: chụp ảnh viewport
+- **FPS counter**
+
+## Phím tắt
+
+| Phím | Chức năng |
+|------|-----------|
+| W/A/S/D | Tác dụng lực ngang |
+| Q/E | Quay đối tượng |
+| Z/X | Phóng to / thu nhỏ |
+| Space | Bắn lên trên |
+| G | Chế độ tịnh tiến (gizmo) |
+| R | Chế độ quay (gizmo) |
+| T | Chế độ tỉ lệ (gizmo) |
+| F | Bật/tắt animation |
+| P | Reset scene |
+| B | Bật/tắt debug |
+| Delete | Xoá đối tượng đang chọn |
+| ? | Hiện bảng phím tắt |
+
+## Mapping với kiến thức đồ hoạ
+
+| Khái niệm | Triển khai |
+|-----------|-----------|
+| **Transformation** | Affine: translate, rotate, scale qua TransformControls + keyboard |
+| **Projection** | PerspectiveCamera — FOV/near/far slider |
+| **Lighting** | MeshPhongMaterial + 4 loại nguồn sáng |
+| **Shadow** | DirectionalLight castShadow + PCFSoftShadowMap |
+| **Texture** | UV mapping + CanvasTexture + TextureLoader |
+| **Raycasting** | THREE.Raycaster — click chọn đối tượng |
+| **Physics** | cannon-es: gravity, friction, restitution, collision |
