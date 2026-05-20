@@ -1,90 +1,74 @@
-# CS105 — Ứng dụng mô phỏng vật lý 3D
+# CS105 — Sandbox mô phỏng vật lý 3D (THCS)
 
 Đồ án môn Đồ hoạ máy tính (CS105) — UIT.  
-Mô phỏng vật lý + đồ hoạ 3D dùng **Three.js** và **cannon-es**, kiến trúc module ES6.
+**Mô phỏng cơ học cổ điển** cho học sinh / giáo viên THCS, dùng **Three.js** + **cannon-es**.
+
+> Định hướng chi tiết: xem [PLAN.md](PLAN.md) (source of truth).
 
 ## Chạy dự án
 
 ```bash
-cd CS105
-python3 -m http.server 5500
+cd CS105-Project
+python -m http.server 5500
 ```
 
-Mở trình duyệt: `http://localhost:5500`
+Mở: `http://localhost:5500`
 
-## Tính năng
+## Cho lớp THCS
 
-### Hình học 3D (12 loại)
-Hộp, Cầu, Nón, Trụ, Bánh xe (Torus), Ấm trà (Teapot), Nút xoắn (TorusKnot), 12 mặt (Dodecahedron), 20 mặt (Icosahedron), 8 mặt (Octahedron), Capsule, Lathe.
+### 4 cảnh mô phỏng
 
-### Load model từ file
-Hỗ trợ `.glb`, `.gltf`, `.obj` — tự tạo bounding box physics.
+1. **Mặt phẳng nghiêng** — `a = g sinθ − μg cosθ`, so sánh a lý thuyết / đo, đồ thị v–t  
+2. **Rơi tự do** — `s = ½gt²`, Galileo (2 khối lượng khác nhau)  
+3. **Lực ngang & ma sát** — `F − f = ma`, μ trên mặt sàn  
+4. **Va chạm** — 2 vật 1 chiều, bảo toàn động lượng, hệ số e  
 
-### Phép chiếu phối cảnh
-Chỉnh `FOV`, `near`, `far` realtime qua panel bên phải.
+### Đối tượng
 
-### Biến đổi Affine
-- **Tịnh tiến**: kéo bằng TransformControls hoặc lực W/A/S/D
-- **Quay**: TransformControls hoặc Q/E
-- **Tỉ lệ**: TransformControls hoặc Z/X (đồng bộ mesh + physics body)
+- Thí nghiệm: **hộp**, **cầu** (spawn tối đa 3 vật thêm / cảnh)  
+- Mặt cảnh: sàn, dốc — **μ chỉ trên mặt**, không trên vật  
 
-### Chiếu sáng (Phong)
-- Ambient Light
-- Hemisphere Light
-- Point Light × 2
-- Directional Light (cast shadow)
-- Chỉnh intensity realtime
+### Lực (tối đa 3 vector tùy chỉnh)
 
-### Bóng đổ (Shadow Mapping)
-- PCFSoftShadowMap
-- Shadow bias + radius tuỳ chỉnh
+- F1, F2, F3: bật/tắt, chỉnh Fx/Fy/Fz (panel phải) hoặc W/A/S/D → F1  
+- Hiển thị P, N, f, F_net + bảng số (N)  
+- Vật chuyển động theo **tổng hợp lực** (engine + lực gắn)  
 
-### Texture Mapping
-8 preset (grid, wood, metal, brick, marble, checker, lava, grass) + upload ảnh bitmap.
+### Điều khiển
 
-### 5 Scene mô phỏng vật lý
-1. **Mặt phẳng nghiêng** — `a = g sin(θ) − μg cos(θ)`
-2. **Rơi tự do** — `s = ½gt²`
-3. **Lực ngang & ma sát** — `F − f = ma`
-4. **Va chạm đàn hồi** — bảo toàn động lượng
-5. **Hiệu ứng Domino** — phản ứng dây chuyền
+| Phím / Nút | Chức năng |
+|------------|----------|
+| Space / Tạm dừng | Pause simulation |
+| N / Bước | Một bước physics |
+| P / Reset | Khôi phục vị trí ban đầu cảnh |
+| W A S D | Đặt F1 (lực ngang) |
+| ? | Phím tắt |
 
-### Tính năng nâng cao
-- **TransformControls**: kéo/quay/scale trực quan bằng gizmo
-- **Raycasting**: click chọn đối tượng, highlight emissive
-- **Hiệu ứng va chạm**: particles khi va đập mạnh
-- **Môi trường**: 4 preset (Đêm, Ngày, Hoàng hôn, Studio) — thay đổi fog, sky, ánh sáng
-- **HUD realtime**: vị trí, vận tốc, khối lượng, năng lượng (KE + PE)
-- **Object list**: xem/chọn/xoá đối tượng trong sidebar
-- **Debug mode**: wireframe, bounding box, camera frustum
-- **Screenshot**: chụp ảnh viewport
-- **FPS counter**
-
-## Phím tắt
-
-| Phím | Chức năng |
-|------|-----------|
-| W/A/S/D | Tác dụng lực ngang |
-| Q/E | Quay đối tượng |
-| Z/X | Phóng to / thu nhỏ |
-| Space | Bắn lên trên |
-| G | Chế độ tịnh tiến (gizmo) |
-| R | Chế độ quay (gizmo) |
-| T | Chế độ tỉ lệ (gizmo) |
-| F | Bật/tắt animation |
-| P | Reset scene |
-| B | Bật/tắt debug |
-| Delete | Xoá đối tượng đang chọn |
-| ? | Hiện bảng phím tắt |
-
-## Mapping với kiến thức đồ hoạ
+## Mapping CS105 (báo cáo)
 
 | Khái niệm | Triển khai |
-|-----------|-----------|
-| **Transformation** | Affine: translate, rotate, scale qua TransformControls + keyboard |
-| **Projection** | PerspectiveCamera — FOV/near/far slider |
-| **Lighting** | MeshPhongMaterial + 4 loại nguồn sáng |
-| **Shadow** | DirectionalLight castShadow + PCFSoftShadowMap |
-| **Texture** | UV mapping + CanvasTexture + TextureLoader |
-| **Raycasting** | THREE.Raycaster — click chọn đối tượng |
-| **Physics** | cannon-es: gravity, friction, restitution, collision |
+|-----------|------------|
+| Transformation | Affine: translate, rotate, scale (TransformControls) |
+| Projection | PerspectiveCamera — FOV, near, far |
+| Lighting | MeshPhongMaterial + ambient / point / directional |
+| Shadow | DirectionalLight + PCFSoftShadowMap |
+| Texture | UV + preset |
+| Raycasting | Chọn vật |
+| Physics | cannon-es — F_net, μ mặt, e va chạm |
+
+## Cấu trúc mã
+
+```
+src/
+  main.js              # Vòng lặp, HUD, pause
+  state.js             # Trạng thái toàn cục
+  engine/              # physics, view, sceneManager, surfaces
+  physics/forces.js    # 3 lực tùy chỉnh, F_net
+  analysis/metrics.js  # Đo a, momentum, s, t
+  components/          # geometries, visualizers, graphCanvas
+  interaction/         # input, ui
+```
+
+## Agent / phát triển tiếp
+
+Đọc [PLAN.md](PLAN.md) và [AGENTS.md](AGENTS.md) trước khi sửa code. Rule Cursor: `.cursor/rules/plan-first.mdc`.

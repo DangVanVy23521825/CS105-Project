@@ -1,7 +1,6 @@
 import * as CANNON from "cannon-es";
 
 export function createPhysicsEngine() {
-  // Khoi tao the gioi vat ly voi trong luc mac dinh 9.82 m/s^2
   const world = new CANNON.World({
     gravity: new CANNON.Vec3(0, -9.82, 0)
   });
@@ -10,17 +9,17 @@ export function createPhysicsEngine() {
   world.allowSleep = true;
   world.solver.iterations = 12;
 
+  const experimentMaterial = new CANNON.Material("experiment");
   const defaultMaterial = new CANNON.Material("default");
-  const defaultContactMaterial = new CANNON.ContactMaterial(
-    defaultMaterial,
-    defaultMaterial,
-    { friction: 0.4, restitution: 0.35 }
-  );
 
-  world.defaultContactMaterial = defaultContactMaterial;
-  world.addContactMaterial(defaultContactMaterial);
+  const experimentSelfContact = new CANNON.ContactMaterial(experimentMaterial, experimentMaterial, {
+    friction: 0.05,
+    restitution: 0.35
+  });
+  world.addContactMaterial(experimentSelfContact);
 
-  // Danh sach callback cho su kien va cham
+  const defaultContactMaterial = experimentSelfContact;
+
   const collisionCallbacks = [];
 
   world.addEventListener("postStep", () => {
@@ -35,26 +34,35 @@ export function createPhysicsEngine() {
     collisionCallbacks.push(callback);
   }
 
-  // Buoc mo phong co dinh 1/60 de dam bao on dinh
-  function update() {
-    world.step(1 / 60);
+  function update(stepOnce = false) {
+    if (stepOnce) {
+      world.step(1 / 60);
+    } else {
+      world.step(1 / 60);
+    }
   }
 
   function setGravity(x, y, z) {
     world.gravity.set(x, y, z);
   }
 
+  function setRestitution(e) {
+    experimentSelfContact.restitution = e;
+  }
+
   function setMaterialProps({ friction, restitution }) {
-    if (typeof friction === "number") defaultContactMaterial.friction = friction;
-    if (typeof restitution === "number") defaultContactMaterial.restitution = restitution;
+    if (typeof restitution === "number") setRestitution(restitution);
   }
 
   return {
     world,
     defaultMaterial,
+    experimentMaterial,
     defaultContactMaterial,
+    experimentSelfContact,
     update,
     setGravity,
+    setRestitution,
     setMaterialProps,
     onCollision
   };

@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import * as CANNON from "cannon-es";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 
 export function createInputSystem({
@@ -12,17 +11,17 @@ export function createInputSystem({
   setSelected,
   onScale,
   onReset,
-  onToggleAnimation,
+  onTogglePause,
+  onStep,
   onToggleDebug,
   onDeleteSelected,
-  onTransformModeChange
+  onTransformModeChange,
+  onForceChange
 }) {
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   const pressed = new Set();
-  const forceVector = new THREE.Vector3();
 
-  // ─── TransformControls: cho phep keo/quay/scale bang chuot ───
   const transformControls = new TransformControls(camera, renderer.domElement);
   transformControls.setSize(0.8);
   transformControls.space = "world";
@@ -55,11 +54,8 @@ export function createInputSystem({
   }
 
   function attachTransform(simObject) {
-    if (simObject) {
-      transformControls.attach(simObject.mesh);
-    } else {
-      transformControls.detach();
-    }
+    if (simObject) transformControls.attach(simObject.mesh);
+    else transformControls.detach();
   }
 
   function setHighlight(target, enabled) {
@@ -70,16 +66,14 @@ export function createInputSystem({
       mesh.material.emissiveIntensity = enabled ? 0.7 : 0;
       mesh.material.emissive.set(enabled ? 0x1d4ed8 : 0x000000);
     };
-    if (target.mesh.isMesh) {
-      applyEmissive(target.mesh);
-    } else {
-      target.mesh.traverse((child) => { if (child.isMesh) applyEmissive(child); });
-    }
+    if (target.mesh.isMesh) applyEmissive(target.mesh);
+    else target.mesh.traverse((child) => {
+      if (child.isMesh) applyEmissive(child);
+    });
   }
 
   function pickObject(event) {
-    if (event.button !== 0) return;
-    if (transformControls.dragging) return;
+    if (event.button !== 0 || transformControls.dragging) return;
 
     const rect = renderer.domElement.getBoundingClientRect();
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -89,11 +83,13 @@ export function createInputSystem({
     const meshes = [];
     for (const o of getObjects()) {
       if (o.mesh.isMesh) meshes.push(o.mesh);
-      else o.mesh.traverse((c) => { if (c.isMesh) meshes.push(c); });
+      else o.mesh.traverse((c) => {
+        if (c.isMesh) meshes.push(c);
+      });
     }
     const hits = raycaster.intersectObjects(meshes, false);
-
     const previous = getSelected();
+
     if (hits.length === 0) {
       if (previous) {
         setHighlight(previous, false);
@@ -108,7 +104,9 @@ export function createInputSystem({
     if (!selectedObject) {
       selectedObject = getObjects().find((o) => {
         let found = false;
-        o.mesh.traverse((c) => { if (c === hitMesh) found = true; });
+        o.mesh.traverse((c) => {
+          if (c === hitMesh) found = true;
+        });
         return found;
       });
     }
@@ -125,11 +123,23 @@ export function createInputSystem({
     pressed.add(event.code);
 
     switch (event.code) {
-      case "KeyP": onReset(); break;
-      case "KeyF": onToggleAnimation(); break;
-      case "KeyB": onToggleDebug(); break;
+      case "KeyP":
+        onReset();
+        break;
+      case "Space":
+        event.preventDefault();
+        onTogglePause();
+        break;
+      case "KeyN":
+        onStep();
+        break;
+      case "KeyB":
+        onToggleDebug();
+        break;
       case "Delete":
-      case "Backspace": onDeleteSelected(); break;
+      case "Backspace":
+        onDeleteSelected();
+        break;
       case "KeyG":
         setTransformMode("translate");
         onTransformModeChange("translate");
@@ -144,8 +154,7 @@ export function createInputSystem({
         break;
       case "Slash":
       case "NumpadDivide": {
-        const overlay = document.getElementById("shortcutsOverlay");
-        overlay?.classList.toggle("show");
+        document.getElementById("shortcutsOverlay")?.classList.toggle("show");
         break;
       }
     }
@@ -159,48 +168,55 @@ export function createInputSystem({
   window.addEventListener("keydown", handleKeyDown);
   window.addEventListener("keyup", handleKeyUp);
 
-  function applyRealtimeControls(dt) {
-    forceVector.set(0, 0, 0);
+  /**
+   * W/A/S/D: dat magnitude F1 theo xung nhanh theo phuong XZ (world).
+   * Frame van giu nguyen — day la "phim tat thu nghiem nhanh", khong thay doi khung luc.
+   */
+  function applyKeyboardToForces() {
     const selected = getSelected();
-    if (!selected || selected.body.mass === 0) return forceVector;
-    if (transformControls.dragging) return forceVector;
+    if (!selected || selected.isStatic || transformControls.dragging) return;
 
-    const forceValue = 60;
-    if (pressed.has("KeyW")) forceVector.z -= forceValue;
-    if (pressed.has("KeyS")) forceVector.z += forceValue;
-    if (pressed.has("KeyA")) forceVector.x -= forceValue;
-    if (pressed.has("KeyD")) forceVector.x += forceValue;
-    if (pressed.has("Space")) {
-      selected.body.applyForce(new CANNON.Vec3(0, 180, 0), selected.body.position);
+    let dx = 0;
+    let dz = 0;
+    if (pressed.has("KeyW")) dz -= 1;
+    if (pressed.has("KeyS")) dz += 1;
+    if (pressed.has("KeyA")) dx -= 1;
+    if (pressed.has("KeyD")) dx += 1;
+    if (dx !== 0 || dz !== 0) {
+      // Tinh goc theo XZ de dat forceFrame F1 theo huong phim bam
+      const angle = Math.atan2(dx, dz);
+      // Dat forceFrame quay theo truc Y so huong W/A/S/D
+      const half = angle / 2;
+      const newQ = { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) };
+      selected.forceFrame.x = newQ.x;
+      selected.forceFrame.y = newQ.y;
+      selected.forceFrame.z = newQ.z;
+      selected.forceFrame.w = newQ.w;
+      selected.forceAxes[0].enabled = true;
+      selected.forceAxes[0].magnitude = 40;
+      onForceChange?.();
+    } else {
+      // Khi tha phim, giu trang thai F1 (khong reset de tranh giat)
     }
 
-    if (forceVector.lengthSq() > 0.0001) {
-      selected.body.applyForce(
-        new CANNON.Vec3(forceVector.x, forceVector.y, forceVector.z),
-        selected.body.position
+    if (pressed.has("KeyQ")) {
+      selected.mesh.rotation.y += 0.03;
+      selected.body.quaternion.setFromEuler(
+        selected.mesh.rotation.x,
+        selected.mesh.rotation.y,
+        selected.mesh.rotation.z
       );
     }
-
-    const rotateSpeed = 1.8;
-    if (pressed.has("KeyQ")) {
-      selected.mesh.rotation.y += rotateSpeed * dt;
-      selected.body.quaternion.setFromEuler(selected.mesh.rotation.x, selected.mesh.rotation.y, selected.mesh.rotation.z);
-    }
     if (pressed.has("KeyE")) {
-      selected.mesh.rotation.y -= rotateSpeed * dt;
-      selected.body.quaternion.setFromEuler(selected.mesh.rotation.x, selected.mesh.rotation.y, selected.mesh.rotation.z);
+      selected.mesh.rotation.y -= 0.03;
+      selected.body.quaternion.setFromEuler(
+        selected.mesh.rotation.x,
+        selected.mesh.rotation.y,
+        selected.mesh.rotation.z
+      );
     }
-
-    if (pressed.has("KeyZ")) {
-      const s = Math.min(selected.mesh.scale.x + dt, 4);
-      onScale(selected, s);
-    }
-    if (pressed.has("KeyX")) {
-      const s = Math.max(selected.mesh.scale.x - dt, 0.2);
-      onScale(selected, s);
-    }
-
-    return forceVector;
+    if (pressed.has("KeyZ")) onScale(selected, Math.min(selected.mesh.scale.x + 0.02, 4));
+    if (pressed.has("KeyX")) onScale(selected, Math.max(selected.mesh.scale.x - 0.02, 0.2));
   }
 
   function dispose() {
@@ -214,7 +230,7 @@ export function createInputSystem({
     transformControls,
     setTransformMode,
     attachTransform,
-    applyRealtimeControls,
+    applyKeyboardToForces,
     dispose
   };
 }

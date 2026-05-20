@@ -1,53 +1,127 @@
 import * as THREE from "three";
+import {
+  computeWeight,
+  computeWorldForces,
+  axesFromQuaternion,
+  estimateContactForces,
+  computeFnet,
+  vecLength
+} from "../physics/forces.js";
+import { createForceLabelSet, placeLabelAtVectorTip, disposeLabels } from "./forceLabels.js";
+
+function makeArrow(color) {
+  return new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(), 0, color, 0.35, 0.2);
+}
 
 export function createForceVisualizers(scene) {
-  // Arrow helpers hien thi cac luc tac dung len doi tuong
-  const gravity = new THREE.ArrowHelper(
-    new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 8, 0), 4, 0x60a5fa, 0.4, 0.22
-  );
-  const applied = new THREE.ArrowHelper(
-    new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 0), 0, 0xf97316, 0.35, 0.2
-  );
-  const normal = new THREE.ArrowHelper(
-    new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0), 0, 0x34d399, 0.3, 0.18
-  );
+  const arrows = {
+    P: makeArrow(0x60a5fa),
+    N: makeArrow(0x34d399),
+    f: makeArrow(0xfbbf24),
+    F1: makeArrow(0xf97316),
+    F2: makeArrow(0xfb923c),
+    F3: makeArrow(0xa78bfa),
+    Fnet: makeArrow(0xef4444)
+  };
 
-  gravity.visible = true;
-  applied.visible = false;
-  normal.visible = false;
+  for (const a of Object.values(arrows)) {
+    a.visible = false;
+    scene.add(a);
+  }
 
-  scene.add(gravity, applied, normal);
+  const forceLabels = createForceLabelSet(["F1", "F2", "F3"]);
+  for (const lbl of Object.values(forceLabels)) {
+    lbl.visible = false;
+    scene.add(lbl);
+  }
 
-  function updateForObject(simObject, appliedForceVector) {
-    if (!simObject) {
-      applied.visible = false;
-      normal.visible = false;
+  const scale = 0.02;
+  const axisHintDist = 1.35;
+
+  function setArrow(arrow, origin, vec) {
+    const len = vecLength(vec);
+    if (len < 0.01) {
+      arrow.visible = false;
       return;
     }
+    arrow.visible = true;
+    arrow.position.copy(origin);
+    const dir = new THREE.Vector3(vec.x, vec.y, vec.z).normalize();
+    arrow.setDirection(dir);
+    arrow.setLength(Math.min(len * scale, 6), 0.35, 0.18);
+  }
 
-    const p = simObject.mesh.position;
-    const forceLen = appliedForceVector.length();
-
-    if (forceLen > 0.01) {
-      applied.visible = true;
-      applied.position.set(p.x, p.y + 1.2, p.z);
-      applied.setDirection(appliedForceVector.clone().normalize());
-      applied.setLength(Math.min(forceLen * 0.05, 5), 0.35, 0.2);
-    } else {
-      applied.visible = false;
+  function updateForObject(simObject, gravityVec, surfaceFriction = 0.4) {
+    if (!simObject || simObject.isStatic || simObject.body.mass <= 0) {
+      for (const a of Object.values(arrows)) a.visible = false;
+      for (const lbl of Object.values(forceLabels)) lbl.visible = false;
+      return { rows: [], Fnet: { x: 0, y: 0, z: 0 } };
     }
 
-    normal.visible = true;
-    normal.position.set(p.x, p.y + 0.2, p.z);
-    normal.setDirection(new THREE.Vector3(0, 1, 0));
-    normal.setLength(2.2, 0.24, 0.12);
+    const origin = new THREE.Vector3(
+      simObject.mesh.position.x,
+      simObject.mesh.position.y + 0.5,
+      simObject.mesh.position.z
+    );
+
+    const P = computeWeight(simObject.body.mass, gravityVec);
+    const { N, f } = estimateContactForces(simObject, gravityVec, surfaceFriction);
+    const Fnet = computeFnet(simObject, gravityVec, surfaceFriction);
+
+    setArrow(arrows.P, origin, P);
+    setArrow(arrows.N, origin, N);
+    setArrow(arrows.f, origin, f);
+
+    const slots = ["F1", "F2", "F3"];
+    const basis = axesFromQuaternion(simObject.forceFrame);
+    const basisAxes = [basis.u, basis.v, basis.w];
+    const worldForces = computeWorldForces(simObject.forceFrame, simObject.forceAxes);
+    worldForces.forEach((wf, i) => {
+      const key = slots[i];
+      const lbl = forceLabels[key];
+      const mag = Math.abs(wf.magnitude ?? 0);
+      if (wf.enabled && mag > 0.01) {
+        setArrow(arrows[key], origin, wf.vector);
+        const displayLen = Math.min(mag * scale, 6);
+        placeLabelAtVectorTip(lbl, origin, wf.vector, displayLen + 0.25);
+      } else if (wf.enabled) {
+        arrows[key].visible = false;
+        const ax = basisAxes[i];
+        lbl.visible = true;
+        lbl.position.set(
+          origin.x + ax.x * axisHintDist,
+          origin.y + ax.y * axisHintDist,
+          origin.z + ax.z * axisHintDist
+        );
+      } else {
+        arrows[key].visible = false;
+        lbl.visible = false;
+      }
+    });
+
+    setArrow(arrows.Fnet, origin, Fnet);
+
+    const rows = [
+      { name: "P", ...P, mag: vecLength(P) },
+      { name: "N", ...N, mag: vecLength(N) },
+      { name: "f", ...f, mag: vecLength(f) }
+    ];
+    worldForces.forEach((wf) => {
+      if (wf.enabled && wf.magnitude !== 0) {
+        rows.push({ name: wf.id, ...wf.vector, mag: Math.abs(wf.magnitude) });
+      }
+    });
+    rows.push({ name: "F_net", ...Fnet, mag: vecLength(Fnet) });
+
+    return { rows, Fnet };
   }
 
   function dispose() {
-    scene.remove(gravity, applied, normal);
+    for (const a of Object.values(arrows)) scene.remove(a);
+    disposeLabels(forceLabels);
   }
 
-  return { arrows: { gravity, applied, normal }, updateForObject, dispose };
+  return { arrows, updateForObject, dispose };
 }
 
 export function createCollisionParticles(scene) {

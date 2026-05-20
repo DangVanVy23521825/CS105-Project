@@ -1,0 +1,10 @@
+---
+description: Doc PLAN.md truoc moi thay doi code CS105
+alwaysApply: true
+---
+
+Truoc khi sua code trong repo nay:
+1. Doc [PLAN.md](PLAN.md) (phan Phase dang lam).
+2. Khong them tinh nang ngoai PLAN (khoi spawn, canh Domino, env khac day...).
+3. Neu yeu cau user lech PLAN, nhac user va de xuat cap nhat PLAN.md truoc.
+4. Sau khi xong phase, danh dau checkbox trong PLAN.md §7.

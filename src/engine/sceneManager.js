@@ -1,9 +1,8 @@
 import * as CANNON from "cannon-es";
-import {
-  createBox, createCone, createCylinder, createGround, createSphere,
-  createTeapot, createWheel, createTorusKnot, createDodecahedron,
-  createIcosahedron, createOctahedron, createCapsule, createLathe
-} from "../components/geometries.js";
+import { createBox, createGround, createSphere } from "../components/geometries.js";
+import { cloneVelocity } from "../analysis/metrics.js";
+
+const MAX_USER_SPAWN = 3;
 
 function disposeMesh(mesh) {
   mesh.traverse?.((child) => {
@@ -13,8 +12,31 @@ function disposeMesh(mesh) {
   });
 }
 
-export function createSceneManager({ scene, world, getTexture, physicsMaterial }) {
+function snapshotBody(item) {
+  return {
+    position: [item.body.position.x, item.body.position.y, item.body.position.z],
+    quaternion: [item.body.quaternion.x, item.body.quaternion.y, item.body.quaternion.z, item.body.quaternion.w],
+    velocity: cloneVelocity(item.body),
+    angularVelocity: {
+      x: item.body.angularVelocity.x,
+      y: item.body.angularVelocity.y,
+      z: item.body.angularVelocity.z
+    }
+  };
+}
+
+export function createSceneManager({ scene, world, getTexture, physicsMaterial, surfaceManager }) {
   const objects = [];
+  let initialStates = [];
+
+  function decorateExperiment(item, label) {
+    item.role = "experiment";
+    item.isStatic = false;
+    item.label = label;
+    item.spawnedByUser = false;
+    item.body.material = physicsMaterial.experimentMaterial;
+    return item;
+  }
 
   function addObject(item, position = [0, 0, 0], rotation = [0, 0, 0]) {
     const [x, y, z] = position;
@@ -39,165 +61,144 @@ export function createSceneManager({ scene, world, getTexture, physicsMaterial }
 
   function clearAll() {
     for (const item of [...objects]) removeObject(item);
+    surfaceManager?.clear();
+    initialStates = [];
   }
 
-  // ─── Scene 1: Mặt phẳng nghiêng ───
-  function initInclinedPlane() {
-    const ground = createGround({ width: 42, depth: 42, texture: getTexture("grid"), physicsMaterial });
-    addObject(ground, [0, -0.4, 0]);
+  function saveInitialStates() {
+    initialStates = objects.map((o) => ({
+      ref: o,
+      ...snapshotBody(o)
+    }));
+  }
 
-    const ramp = createBox({ width: 14, height: 0.7, depth: 9, mass: 0, texture: getTexture("wood"), color: 0xb08968, physicsMaterial });
+  function countUserSpawned() {
+    return objects.filter((o) => o.spawnedByUser && o.role === "experiment").length;
+  }
+
+  // --- Scene 1: Mat phang nghieng ---
+  function initInclinedPlane() {
+    const ground = createGround({ width: 42, depth: 42, texture: getTexture("grid"), physicsMaterial: physicsMaterial.defaultMaterial, label: "San" });
+    addObject(ground, [0, -0.4, 0]);
+    surfaceManager.registerSurface(ground, { friction: 0.4, label: "San" });
+
+    const ramp = createBox({
+      width: 14,
+      height: 0.7,
+      depth: 9,
+      mass: 0,
+      texture: getTexture("wood"),
+      color: 0xb08968,
+      physicsMaterial: physicsMaterial.defaultMaterial,
+      label: "Mat phang nghieng",
+      role: "surface"
+    });
     const theta = Math.PI * 0.15;
     addObject(ramp, [0, 2.5, -1], [0, 0, -theta]);
+    surfaceManager.registerSurface(ramp, { friction: 0.4, label: "Mat phang nghieng" });
 
-    addObject(createBox({ width: 1.4, height: 1.4, depth: 1.4, mass: 2, texture: getTexture("metal"), color: 0x94a3b8, physicsMaterial }), [-3, 6, -1]);
-    addObject(createSphere({ radius: 0.9, mass: 1.5, texture: getTexture("grid"), color: 0x93c5fd, physicsMaterial }), [2, 6.5, -1]);
-    addObject(createCylinder({ radiusTop: 0.6, radiusBottom: 0.6, height: 1.6, mass: 1.8, texture: getTexture("marble"), color: 0xddd6fe, physicsMaterial }), [-0.5, 7, -1]);
+    const box = createBox({ width: 1.2, height: 1.2, depth: 1.2, mass: 2, texture: getTexture("metal"), color: 0x94a3b8, physicsMaterial: physicsMaterial.experimentMaterial, label: "Hop 2 kg" });
+    decorateExperiment(box, "Hop 2 kg");
+    addObject(box, [0, 5.5, -1]);
 
-    const wallBack = createBox({ width: 20, height: 3, depth: 0.5, mass: 0, texture: getTexture("brick"), color: 0x7c3f00, physicsMaterial });
-    addObject(wallBack, [0, 1.5, -10]);
+    const sphere = createSphere({ radius: 0.85, mass: 1.5, texture: getTexture("grid"), color: 0x93c5fd, physicsMaterial: physicsMaterial.experimentMaterial, label: "Cau 1.5 kg" });
+    decorateExperiment(sphere, "Cau 1.5 kg");
+    addObject(sphere, [2, 6, -1]);
 
+    saveInitialStates();
+    surfaceManager.pickActiveForScene("Inclined Plane");
     return { name: "Inclined Plane", rampObject: ramp };
   }
 
-  // ─── Scene 2: Rơi tự do ───
+  // --- Scene 2: Roi tu do ---
   function initFreeFall() {
-    const ground = createGround({ width: 40, depth: 40, texture: getTexture("grid"), physicsMaterial });
+    const ground = createGround({ width: 40, depth: 40, texture: getTexture("grid"), physicsMaterial: physicsMaterial.defaultMaterial, label: "San" });
     addObject(ground, [0, -0.4, 0]);
+    surfaceManager.registerSurface(ground, { friction: 0.3, label: "San" });
 
-    const shapes = [createSphere, createBox, createCone, createDodecahedron, createTeapot, createCapsule];
-    const textures = ["metal", "wood", "marble", "checker", "lava", "grid"];
-    const colors = [0x38bdf8, 0xfbbf24, 0xa78bfa, 0xf87171, 0xf1f5f9, 0x34d399];
+    const sphere = createSphere({ radius: 0.9, mass: 1, texture: getTexture("metal"), color: 0x38bdf8, physicsMaterial: physicsMaterial.experimentMaterial, label: "Cau 1 kg" });
+    decorateExperiment(sphere, "Cau 1 kg");
+    addObject(sphere, [-2, 12, 0]);
 
-    for (let i = 0; i < 6; i++) {
-      const mass = 1 + i * 1.5;
-      const factory = shapes[i];
-      const options = { mass, texture: getTexture(textures[i]), color: colors[i], physicsMaterial };
-      if (factory === createTeapot) options.size = 0.85;
-      const item = factory(options);
-      addObject(item, [-8 + i * 3.2, 11 + i * 2, 0]);
-    }
+    const box = createBox({ width: 1.2, height: 1.2, depth: 1.2, mass: 4, texture: getTexture("wood"), color: 0xfbbf24, physicsMaterial: physicsMaterial.experimentMaterial, label: "Hop 4 kg" });
+    decorateExperiment(box, "Hop 4 kg");
+    addObject(box, [2, 12, 0]);
 
-    return { name: "Free Fall" };
+    saveInitialStates();
+    surfaceManager.pickActiveForScene("Free Fall");
+    return { name: "Free Fall", fallY0: 12 };
   }
 
-  // ─── Scene 3: Lực ngang & ma sát ───
+  // --- Scene 3: Luc ngang & ma sat ---
   function initHorizontalForce() {
-    const ground = createGround({ width: 50, depth: 50, texture: getTexture("grid"), physicsMaterial });
+    const ground = createGround({ width: 50, depth: 50, texture: getTexture("grid"), physicsMaterial: physicsMaterial.defaultMaterial, label: "San" });
     addObject(ground, [0, -0.4, 0]);
+    surfaceManager.registerSurface(ground, { friction: 0.4, label: "San" });
 
-    for (let i = 0; i < 8; i++) {
-      const row = Math.floor(i / 4);
-      const col = i % 4;
-      const tex = ["wood", "metal", "marble", "brick"][col];
-      const box = createBox({ width: 1.6, height: 1.2, depth: 1.6, mass: 1.5 + i * 0.3, texture: getTexture(tex), color: 0xf8fafc, physicsMaterial });
-      addObject(box, [-6 + col * 4, 1.5 + row * 3, -4 + row * 4]);
-    }
+    const box = createBox({ width: 1.4, height: 1.2, depth: 1.4, mass: 2, texture: getTexture("wood"), color: 0xf8fafc, physicsMaterial: physicsMaterial.experimentMaterial, label: "Hop 2 kg" });
+    decorateExperiment(box, "Hop 2 kg");
+    addObject(box, [0, 1.2, 0]);
 
-    addObject(createCone({ mass: 1.6, texture: getTexture("lava"), color: 0xfdba74, physicsMaterial }), [5, 6, 4]);
-    addObject(createTorusKnot({ mass: 2, texture: getTexture("metal"), color: 0x818cf8, physicsMaterial }), [-3, 8, 3]);
-    addObject(createOctahedron({ mass: 1.5, texture: getTexture("checker"), color: 0xfbbf24, physicsMaterial }), [0, 10, 0]);
-
+    saveInitialStates();
+    surfaceManager.pickActiveForScene("Horizontal Force");
     return { name: "Horizontal Force" };
   }
 
-  // ─── Scene 4: Va chạm đàn hồi ───
+  // --- Scene 4: Va cham ---
   function initCollisionPlayground() {
-    const ground = createGround({ width: 48, depth: 48, texture: getTexture("grid"), physicsMaterial });
+    const ground = createGround({ width: 48, depth: 48, texture: getTexture("grid"), physicsMaterial: physicsMaterial.defaultMaterial, label: "San" });
     addObject(ground, [0, -0.4, 0]);
+    surfaceManager.registerSurface(ground, { friction: 0.2, label: "San" });
 
-    addObject(createBox({ width: 0.6, height: 5.5, depth: 24, mass: 0, texture: getTexture("wood"), color: 0x7c3f00, physicsMaterial }), [-12, 2.5, 0]);
-    addObject(createBox({ width: 0.6, height: 5.5, depth: 24, mass: 0, texture: getTexture("wood"), color: 0x7c3f00, physicsMaterial }), [12, 2.5, 0]);
-    addObject(createBox({ width: 24, height: 5.5, depth: 0.6, mass: 0, texture: getTexture("wood"), color: 0x7c3f00, physicsMaterial }), [0, 2.5, -12]);
-    addObject(createBox({ width: 24, height: 5.5, depth: 0.6, mass: 0, texture: getTexture("wood"), color: 0x7c3f00, physicsMaterial }), [0, 2.5, 12]);
+    const a = createSphere({ radius: 1, mass: 2, texture: getTexture("metal"), color: 0x38bdf8, physicsMaterial: physicsMaterial.experimentMaterial, label: "Cau A" });
+    decorateExperiment(a, "Cau A");
+    addObject(a, [-6, 2, 0]);
+    a.body.velocity.set(8, 0, 0);
 
-    const factories = [createSphere, createCylinder, createWheel, createTeapot, createBox, createDodecahedron, createIcosahedron, createTorusKnot];
-    const texes = ["metal", "wood", "marble", "grid", "checker", "lava", "metal", "brick"];
-    for (let i = 0; i < 12; i++) {
-      const factory = factories[i % factories.length];
-      const opts = { mass: 1.2 + Math.random() * 2, texture: getTexture(texes[i % texes.length]), physicsMaterial };
-      if (factory === createTeapot) opts.size = 0.8;
-      const item = factory(opts);
-      const x = (Math.random() - 0.5) * 16;
-      const z = (Math.random() - 0.5) * 16;
-      addObject(item, [x, 3 + i * 1.5, z]);
-    }
+    const b = createSphere({ radius: 1, mass: 3, texture: getTexture("metal"), color: 0xf97316, physicsMaterial: physicsMaterial.experimentMaterial, label: "Cau B" });
+    decorateExperiment(b, "Cau B");
+    addObject(b, [6, 2, 0]);
+    b.body.velocity.set(-8, 0, 0);
 
-    const a = createSphere({ radius: 1, mass: 3, texture: getTexture("metal"), color: 0x38bdf8, physicsMaterial });
-    addObject(a, [-9, 3, 0]).body.velocity.set(12, 0, 0);
-    const b = createSphere({ radius: 1, mass: 3, texture: getTexture("metal"), color: 0xf97316, physicsMaterial });
-    addObject(b, [9, 3, 0]).body.velocity.set(-12, 0, 0);
-
+    saveInitialStates();
+    surfaceManager.pickActiveForScene("Collision Playground");
     return { name: "Collision Playground" };
-  }
-
-  // ─── Scene 5: Hiệu ứng Domino ───
-  function initDominoChain() {
-    const ground = createGround({ width: 60, depth: 30, texture: getTexture("grid"), physicsMaterial });
-    addObject(ground, [0, -0.4, 0]);
-
-    const count = 20;
-    const spacing = 1.6;
-    const startX = -(count * spacing) / 2;
-
-    for (let i = 0; i < count; i++) {
-      const angle = i < count / 2 ? 0 : Math.sin((i - count / 2) * 0.15) * 0.1;
-      const z = i < count / 2 ? 0 : Math.sin((i - count / 2) * 0.3) * 3;
-      const texName = ["wood", "marble", "metal", "brick", "checker"][i % 5];
-      const colors = [0xf87171, 0xfbbf24, 0x34d399, 0x38bdf8, 0xa78bfa, 0xfb923c];
-
-      const domino = createBox({
-        width: 0.35,
-        height: 2.2,
-        depth: 1.2,
-        mass: 1,
-        texture: getTexture(texName),
-        color: colors[i % colors.length],
-        physicsMaterial,
-        name: `Domino ${i + 1}`
-      });
-      addObject(domino, [startX + i * spacing, 1.5, z], [0, angle, 0]);
-    }
-
-    const striker = createSphere({ radius: 0.7, mass: 4, texture: getTexture("metal"), color: 0xef4444, physicsMaterial });
-    addObject(striker, [startX - 2.5, 1.5, 0]).body.velocity.set(6, 0, 0);
-
-    addObject(createTeapot({ size: 1.2, mass: 5, texture: getTexture("lava"), color: 0xff4500, physicsMaterial }), [startX + count * spacing + 3, 1.5, 0]);
-
-    return { name: "Domino Chain" };
   }
 
   function buildScene(sceneName) {
     clearAll();
     switch (sceneName) {
-      case "Inclined Plane":       return initInclinedPlane();
-      case "Free Fall":            return initFreeFall();
-      case "Horizontal Force":     return initHorizontalForce();
-      case "Collision Playground": return initCollisionPlayground();
-      case "Domino Chain":         return initDominoChain();
-      default:                     return initCollisionPlayground();
+      case "Inclined Plane":
+        return initInclinedPlane();
+      case "Free Fall":
+        return initFreeFall();
+      case "Horizontal Force":
+        return initHorizontalForce();
+      case "Collision Playground":
+        return initCollisionPlayground();
+      default:
+        return initInclinedPlane();
     }
   }
 
-  const SPAWN_MAP = {
-    Box: createBox, Sphere: createSphere, Cone: createCone,
-    Cylinder: createCylinder, Wheel: createWheel, Teapot: createTeapot,
-    TorusKnot: createTorusKnot, Dodecahedron: createDodecahedron,
-    Icosahedron: createIcosahedron, Octahedron: createOctahedron,
-    Capsule: createCapsule, Lathe: createLathe
-  };
+  const SPAWN_MAP = { Box: createBox, Sphere: createSphere };
 
   function spawnShape(type) {
+    if (countUserSpawned() >= MAX_USER_SPAWN) return null;
     const factory = SPAWN_MAP[type] ?? createBox;
-    const colors = [0x38bdf8, 0xa78bfa, 0xf59e0b, 0x34d399, 0xf87171, 0xfb923c];
+    const colors = [0x38bdf8, 0xa78bfa, 0xf59e0b, 0x34d399];
+    const n = countUserSpawned() + 1;
     const config = {
       texture: getTexture("metal"),
-      physicsMaterial,
-      color: colors[Math.floor(Math.random() * colors.length)]
+      physicsMaterial: physicsMaterial.experimentMaterial,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      label: type === "Sphere" ? `Cau them ${n}` : `Hop them ${n}`
     };
-    if (type === "Teapot") config.size = 0.9;
     const item = factory(config);
-    addObject(item, [(Math.random() - 0.5) * 6, 10 + Math.random() * 5, (Math.random() - 0.5) * 6]);
+    decorateExperiment(item, config.label);
+    item.spawnedByUser = true;
+    addObject(item, [(Math.random() - 0.5) * 4, 8 + Math.random() * 3, (Math.random() - 0.5) * 4]);
+    initialStates.push({ ref: item, ...snapshotBody(item) });
     return item;
   }
 
@@ -210,13 +211,34 @@ export function createSceneManager({ scene, world, getTexture, physicsMaterial }
   }
 
   function resetBodies() {
-    for (const item of objects) {
-      if (item.body.mass > 0) {
-        item.body.velocity.set(0, 0, 0);
-        item.body.angularVelocity.set(0, 0, 0);
-      }
+    for (const snap of initialStates) {
+      const item = snap.ref;
+      if (!objects.includes(item)) continue;
+      const [x, y, z] = snap.position;
+      item.body.position.set(x, y, z);
+      item.body.quaternion.set(snap.quaternion[0], snap.quaternion[1], snap.quaternion[2], snap.quaternion[3]);
+      item.body.velocity.set(snap.velocity.x, snap.velocity.y, snap.velocity.z);
+      item.body.angularVelocity.set(snap.angularVelocity.x, snap.angularVelocity.y, snap.angularVelocity.z);
+      item.mesh.position.set(x, y, z);
+      item.mesh.quaternion.copy(item.body.quaternion);
     }
   }
 
-  return { objects, addObject, removeObject, clearAll, buildScene, spawnShape, setRampAngle, resetBodies };
+  function getExperimentObjects() {
+    return objects.filter((o) => o.role === "experiment");
+  }
+
+  return {
+    objects,
+    addObject,
+    removeObject,
+    clearAll,
+    buildScene,
+    spawnShape,
+    setRampAngle,
+    resetBodies,
+    getExperimentObjects,
+    countUserSpawned,
+    MAX_USER_SPAWN
+  };
 }
