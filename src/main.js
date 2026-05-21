@@ -4,19 +4,20 @@ import { createPhysicsEngine } from "./engine/physics.js";
 import { createSurfaceManager } from "./engine/surfaces.js";
 import { createView } from "./engine/view.js";
 import { createSceneManager } from "./engine/sceneManager.js";
-import { createTextureLibrary } from "./components/textures.js";
+import { createTextureLibrary, loadTextureFromFile } from "./components/textures.js";
 import { createForceVisualizers, createCollisionParticles } from "./components/visualizers.js";
 import { updateObjectScale } from "./components/geometries.js";
 import { createInputSystem } from "./interaction/input.js";
 import { createUI } from "./interaction/ui.js";
-import { applyEnvironment } from "./components/environment.js";
+import { applyEnvironment } from "./components/environment.js?v=20260521";
 import { applyForceAxes } from "./physics/forces.js";
 import { createForceFrameControls } from "./interaction/forceFrameControls.js";
 import { createVelocityGraph } from "./components/graphCanvas.js";
+import { loadModelFromFile } from "./components/modelLoader.js";
+import { createCollisionMomentumTracker } from "./analysis/collisionTracker.js";
 import {
   theoreticalRampA,
   measureAccelerationAlongRamp,
-  momentum1D,
   cloneVelocity,
   fallHeight
 } from "./analysis/metrics.js";
@@ -38,9 +39,12 @@ const textureLibrary = createTextureLibrary();
 const forceVisualizers = createForceVisualizers(view.scene);
 const collisionParticles = createCollisionParticles(view.scene);
 
-const modelState = { activeSceneMeta: null, sceneStartTime: 0 };
+const modelState = { activeSceneMeta: null, sceneStartTime: 0, customTexture: null };
 let prevVelocity = null;
 let measuredA = 0;
+
+const imageInput = document.getElementById("imageInput");
+const modelInput = document.getElementById("modelInput");
 
 const graphCanvas = document.getElementById("vtGraph");
 const velocityGraph = graphCanvas ? createVelocityGraph(graphCanvas) : null;
@@ -63,21 +67,51 @@ const sceneManager = createSceneManager({
   surfaceManager
 });
 
+const collisionTracker = createCollisionMomentumTracker(() =>
+  sceneManager.getExperimentObjects()
+);
+
 physics.onCollision((contact) => {
   const impulse = contact.getImpactVelocityAlongNormal?.();
   if (impulse !== undefined && Math.abs(impulse) > 4) {
     const pt = contact.bi.position;
     collisionParticles.spawn(new THREE.Vector3(pt.x, pt.y, pt.z), 0xffa500);
   }
-  if (state.currentScene === "Collision Playground" && state.metrics.collisionMomentumBefore === null) {
-    state.metrics.collisionMomentumBefore = momentum1D(sceneManager.getExperimentObjects());
-  }
+});
+
+physics.onBeginContact((event) => {
   if (state.currentScene === "Collision Playground") {
-    setTimeout(() => {
-      state.metrics.collisionMomentumAfter = momentum1D(sceneManager.getExperimentObjects());
-    }, 50);
+    collisionTracker.handleBeginContact(event);
+    syncCollisionMetricsToState();
   }
 });
+
+physics.onEndContact((event) => {
+  if (state.currentScene === "Collision Playground") {
+    collisionTracker.handleEndContact(event);
+    syncCollisionMetricsToState();
+    updateFormula();
+  }
+});
+
+function syncCollisionMetricsToState() {
+  const { before, after } = collisionTracker.getMetrics();
+  state.metrics.collisionMomentumBefore = before;
+  state.metrics.collisionMomentumAfter = after;
+}
+
+function applyTextureToSelected(textureKey) {
+  const selected = state.selectedObject;
+  if (!selected) return;
+  const texture =
+    textureKey === "custom" ? modelState.customTexture : textureLibrary[textureKey];
+  if (!texture) return;
+  selected.mesh.traverse((child) => {
+    if (!child.isMesh) return;
+    child.material.map = texture;
+    child.material.needsUpdate = true;
+  });
+}
 
 document.querySelectorAll(".scene-card").forEach((card) => {
   card.addEventListener("click", () => {
@@ -96,6 +130,7 @@ document.querySelectorAll(".spawn-btn").forEach((btn) => {
       return;
     }
     syncStateObjects();
+    collisionTracker.refreshBodyMap(sceneManager.objects);
     setSelectedObject(obj);
     input.attachTransform(obj);
     forceFrameControls.attach(obj, () => ui.syncFromSelected());
@@ -106,6 +141,8 @@ document.querySelectorAll(".spawn-btn").forEach((btn) => {
 
 document.getElementById("btnReset")?.addEventListener("click", resetBodies);
 document.getElementById("btnScreenshot")?.addEventListener("click", takeScreenshot);
+document.getElementById("btnLoadTexture")?.addEventListener("click", () => imageInput?.click());
+document.getElementById("btnLoadModel")?.addEventListener("click", () => modelInput?.click());
 document.getElementById("btnPause")?.addEventListener("click", togglePause);
 document.getElementById("btnStep")?.addEventListener("click", () => {
   state.stepOnce = true;
@@ -154,6 +191,7 @@ function onSceneParamsChange({ gravity, friction, restitution, rampAngleDeg }) {
 
 function buildScene(name) {
   state.currentScene = name;
+  collisionTracker.resetMetrics();
   state.metrics.collisionMomentumBefore = null;
   state.metrics.collisionMomentumAfter = null;
   state.metrics.fallStartTime = performance.now() / 1000;
@@ -163,6 +201,7 @@ function buildScene(name) {
   input.attachTransform(null);
   forceFrameControls.detach();
   syncStateObjects();
+  collisionTracker.refreshBodyMap(sceneManager.objects);
   ui.syncSceneParams(state.sceneParams);
   onSceneParamsChange(state.sceneParams);
   if (modelState.activeSceneMeta?.rampObject) {
@@ -180,6 +219,7 @@ function buildScene(name) {
 
 function resetBodies() {
   sceneManager.resetBodies();
+  collisionTracker.resetMetrics();
   state.metrics.collisionMomentumBefore = null;
   state.metrics.collisionMomentumAfter = null;
   state.metrics.fallStartTime = performance.now() / 1000;
@@ -280,15 +320,7 @@ function refreshDebugHelpers() {
 }
 
 function syncMeshFromBody() {
-  for (const item of sceneManager.objects) {
-    item.mesh.position.set(item.body.position.x, item.body.position.y, item.body.position.z);
-    item.mesh.quaternion.set(
-      item.body.quaternion.x,
-      item.body.quaternion.y,
-      item.body.quaternion.z,
-      item.body.quaternion.w
-    );
-  }
+  sceneManager.syncMeshesFromBodies();
 }
 
 function applyAllCustomForces() {
@@ -398,7 +430,8 @@ const ui = createUI({
     updateFormula();
   },
   getSelected: () => state.selectedObject,
-  setTextureForSelected: () => {}
+  setTextureForSelected: (name) => applyTextureToSelected(name),
+  openImagePicker: () => imageInput?.click()
 });
 
 const input = createInputSystem({
@@ -445,6 +478,58 @@ const input = createInputSystem({
 applyEnvironment("day", view);
 ui.syncSceneParams(state.sceneParams);
 buildScene(state.currentScene);
+
+// Dam bao kich thuoc canvas dung sau khi layout xong
+requestAnimationFrame(() => {
+  view.renderer.setSize(
+    Math.max(1, container.clientWidth),
+    Math.max(1, container.clientHeight)
+  );
+  view.camera.aspect = container.clientWidth / Math.max(1, container.clientHeight);
+  view.camera.updateProjectionMatrix();
+});
+
+imageInput?.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    modelState.customTexture = await loadTextureFromFile(file);
+    applyTextureToSelected("custom");
+  } catch (err) {
+    console.error("Loi load texture:", err);
+  } finally {
+    imageInput.value = "";
+  }
+});
+
+modelInput?.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    const modelObj = await loadModelFromFile({
+      file,
+      texture: textureLibrary.metal,
+      physicsMaterial: physics.experimentMaterial
+    });
+    const added = sceneManager.addLoadedModel(modelObj);
+    if (!added) {
+      alert(`Toi da ${sceneManager.MAX_USER_SPAWN} vat thi nghiem them trong canh.`);
+      return;
+    }
+    syncStateObjects();
+    collisionTracker.refreshBodyMap(sceneManager.objects);
+    setSelectedObject(added);
+    input.attachTransform(added);
+    forceFrameControls.attach(added, () => ui.syncFromSelected());
+    ui.syncFromSelected();
+    refreshObjectList();
+  } catch (err) {
+    console.error("Loi load model:", err);
+    alert("Khong load duoc model. Dung file .glb, .gltf hoac .obj");
+  } finally {
+    modelInput.value = "";
+  }
+});
 
 const fpsDisplay = document.createElement("div");
 fpsDisplay.style.cssText =

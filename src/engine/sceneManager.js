@@ -1,5 +1,16 @@
 import * as CANNON from "cannon-es";
-import { createBox, createGround, createSphere } from "../components/geometries.js";
+import {
+  createBox,
+  createCapsule,
+  createCone,
+  createCylinder,
+  createDodecahedron,
+  createGround,
+  createSphere,
+  createTeapot,
+  createTorusKnot,
+  createWheel
+} from "../components/geometries.js";
 import { cloneVelocity } from "../analysis/metrics.js";
 
 const MAX_USER_SPAWN = 3;
@@ -49,6 +60,22 @@ export function createSceneManager({ scene, world, getTexture, physicsMaterial, 
     world.addBody(item.body);
     objects.push(item);
     return item;
+  }
+
+  /**
+   * Dong bo vi tri + quaternion tu physics body sang mesh Three.js.
+   * Day la buoc cuoi cua pipeline: physics step -> cap nhat do hoa.
+   */
+  function syncMeshesFromBodies() {
+    for (const item of objects) {
+      item.mesh.position.set(item.body.position.x, item.body.position.y, item.body.position.z);
+      item.mesh.quaternion.set(
+        item.body.quaternion.x,
+        item.body.quaternion.y,
+        item.body.quaternion.z,
+        item.body.quaternion.w
+      );
+    }
   }
 
   function removeObject(item) {
@@ -181,23 +208,56 @@ export function createSceneManager({ scene, world, getTexture, physicsMaterial, 
     }
   }
 
-  const SPAWN_MAP = { Box: createBox, Sphere: createSphere };
+  const SPAWN_MAP = {
+    Box: createBox,
+    Sphere: createSphere,
+    Cone: createCone,
+    Cylinder: createCylinder,
+    Wheel: createWheel,
+    Teapot: createTeapot,
+    TorusKnot: createTorusKnot,
+    Dodecahedron: createDodecahedron,
+    Capsule: createCapsule
+  };
+
+  const SPAWN_LABELS = {
+    Box: "Hộp",
+    Sphere: "Cầu",
+    Cone: "Nón",
+    Cylinder: "Trụ",
+    Wheel: "Bánh xe",
+    Teapot: "Ấm trà",
+    TorusKnot: "Nút xoắn",
+    Dodecahedron: "12 mặt",
+    Capsule: "Capsule"
+  };
 
   function spawnShape(type) {
     if (countUserSpawned() >= MAX_USER_SPAWN) return null;
     const factory = SPAWN_MAP[type] ?? createBox;
-    const colors = [0x38bdf8, 0xa78bfa, 0xf59e0b, 0x34d399];
+    const colors = [0x38bdf8, 0xa78bfa, 0xf59e0b, 0x34d399, 0xf87171];
     const n = countUserSpawned() + 1;
+    const baseLabel = SPAWN_LABELS[type] ?? type;
     const config = {
       texture: getTexture("metal"),
       physicsMaterial: physicsMaterial.experimentMaterial,
-      color: colors[Math.floor(Math.random() * colors.length)],
-      label: type === "Sphere" ? `Cau them ${n}` : `Hop them ${n}`
+      color: colors[n % colors.length],
+      label: `${baseLabel} ${n}`
     };
+    if (type === "Teapot") config.size = 0.75;
     const item = factory(config);
     decorateExperiment(item, config.label);
     item.spawnedByUser = true;
     addObject(item, [(Math.random() - 0.5) * 4, 8 + Math.random() * 3, (Math.random() - 0.5) * 4]);
+    initialStates.push({ ref: item, ...snapshotBody(item) });
+    return item;
+  }
+
+  function addLoadedModel(item) {
+    if (countUserSpawned() >= MAX_USER_SPAWN) return null;
+    decorateExperiment(item, item.label ?? "Model");
+    item.spawnedByUser = true;
+    addObject(item, [(Math.random() - 0.5) * 3, 9, (Math.random() - 0.5) * 3]);
     initialStates.push({ ref: item, ...snapshotBody(item) });
     return item;
   }
@@ -235,6 +295,8 @@ export function createSceneManager({ scene, world, getTexture, physicsMaterial, 
     clearAll,
     buildScene,
     spawnShape,
+    addLoadedModel,
+    syncMeshesFromBodies,
     setRampAngle,
     resetBodies,
     getExperimentObjects,

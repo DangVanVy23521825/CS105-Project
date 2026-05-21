@@ -8,7 +8,8 @@ export function createUI({
   onSceneChange,
   onRampAngleChange,
   getSelected,
-  setTextureForSelected
+  setTextureForSelected,
+  openImagePicker
 }) {
   const gui = new GUI({ title: "Thuoc tinh", width: 300 });
   gui.domElement.style.position = "fixed";
@@ -99,6 +100,7 @@ export function createUI({
     .add(params, "texturePreset", ["grid", "wood", "metal", "brick", "marble", "checker", "lava", "grass"])
     .name("Preset")
     .onChange((name) => setTextureForSelected(name));
+  texFolder.add({ upload: () => openImagePicker?.() }, "upload").name("Mo anh bitmap");
 
   const selFolder = gui.addFolder("Vat chon");
   selFolder.add(params, "mass", 0.1, 20, 0.1).name("Khoi luong").onChange((v) => {

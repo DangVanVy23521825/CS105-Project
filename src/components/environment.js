@@ -75,27 +75,42 @@ const PRESETS = {
   }
 };
 
-export function applyEnvironment(envName, { scene, renderer, lights, helpers }) {
-  const p = PRESETS[envName] ?? PRESETS.night;
+function setColor(light, hex) {
+  light?.color?.set(hex);
+}
+
+function setGroundColor(light, hex) {
+  light?.groundColor?.set(hex);
+}
+
+export function applyEnvironment(envName, view) {
+  if (!view?.scene || !view?.renderer) return;
+
+  const p = PRESETS[envName] ?? PRESETS.day;
+  const { scene, renderer, lights = {}, helpers = {} } = view;
 
   scene.background = new THREE.Color(p.bg);
   scene.fog = new THREE.FogExp2(p.fogColor, p.fogDensity);
-
   renderer.toneMappingExposure = p.toneExposure;
 
-  lights.ambientLight.intensity = p.ambient;
-  lights.hemisphereLight.color.set(p.hemiSky);
-  lights.hemisphereLight.groundColor.set(p.hemiGround);
-  lights.hemisphereLight.intensity = p.hemiIntensity;
-  lights.directionalLight.color.set(p.dirColor);
-  lights.directionalLight.intensity = p.dirIntensity;
-  lights.pointLight.color.set(p.pointColor);
-  lights.pointLight.intensity = p.pointIntensity;
-  lights.pointLight2.color.set(p.point2Color);
-  lights.pointLight2.intensity = p.point2Intensity;
+  if (lights.ambientLight) lights.ambientLight.intensity = p.ambient;
+  setColor(lights.hemisphereLight, p.hemiSky);
+  setGroundColor(lights.hemisphereLight, p.hemiGround);
+  if (lights.hemisphereLight) lights.hemisphereLight.intensity = p.hemiIntensity;
+  setColor(lights.directionalLight, p.dirColor);
+  if (lights.directionalLight) lights.directionalLight.intensity = p.dirIntensity;
+  setColor(lights.pointLight, p.pointColor);
+  if (lights.pointLight) lights.pointLight.intensity = p.pointIntensity;
+  setColor(lights.pointLight2, p.point2Color);
+  if (lights.pointLight2) lights.pointLight2.intensity = p.point2Intensity;
 
-  const gridMats = Array.isArray(helpers.grid.material) ? helpers.grid.material : [helpers.grid.material];
-  gridMats.forEach((m) => { if (m.color) m.color.set(p.gridColor1); });
+  const grid = helpers.grid;
+  if (grid?.material) {
+    const gridMats = Array.isArray(grid.material) ? grid.material : [grid.material];
+    gridMats.forEach((m) => {
+      if (m?.color) m.color.set(p.gridColor1);
+    });
+  }
 }
 
 export function getEnvironmentNames() {

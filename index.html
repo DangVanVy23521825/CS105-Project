@@ -41,8 +41,16 @@
       /* ─── Viewport ─── */
       #viewport {
         position: fixed;
-        inset: 0;
+        top: 0;
         left: var(--sidebar-w);
+        right: 0;
+        bottom: var(--hud-h);
+        z-index: 0;
+      }
+      #viewport canvas {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
       }
 
       /* ─── Sidebar ─── */
@@ -420,11 +428,19 @@
       </div>
 
       <div class="sb-section">
-        <h3>Tạo đối tượng</h3>
+        <h3>Tạo đối tượng (đề 2.1.1.1)</h3>
         <div id="spawnGrid" class="spawn-grid">
           <button class="spawn-btn" data-shape="Box"><span class="sp-icon">◻️</span><small>Hộp</small></button>
           <button class="spawn-btn" data-shape="Sphere"><span class="sp-icon">⚪</span><small>Cầu</small></button>
+          <button class="spawn-btn" data-shape="Cone"><span class="sp-icon">🔺</span><small>Nón</small></button>
+          <button class="spawn-btn" data-shape="Cylinder"><span class="sp-icon">🛢️</span><small>Trụ</small></button>
+          <button class="spawn-btn" data-shape="Wheel"><span class="sp-icon">⭕</span><small>Bánh xe</small></button>
+          <button class="spawn-btn" data-shape="Teapot"><span class="sp-icon">🫖</span><small>Ấm trà</small></button>
+          <button class="spawn-btn" data-shape="TorusKnot"><span class="sp-icon">🔗</span><small>Nút xoắn</small></button>
+          <button class="spawn-btn" data-shape="Dodecahedron"><span class="sp-icon">⬡</span><small>12 mặt</small></button>
+          <button class="spawn-btn" data-shape="Capsule"><span class="sp-icon">💊</span><small>Capsule</small></button>
         </div>
+        <p style="font-size:10px;color:var(--text3);margin-top:6px;">Tối đa 3 vật thêm / cảnh</p>
       </div>
 
       <div class="sb-section">
@@ -448,6 +464,8 @@
           <button class="act-btn" id="btnPause">⏸ Tạm dừng</button>
           <button class="act-btn" id="btnStep">⏭ Bước</button>
           <button class="act-btn" id="btnScreenshot">📸 Chụp ảnh</button>
+          <button class="act-btn" id="btnLoadTexture">🖼️ Texture</button>
+          <button class="act-btn" id="btnLoadModel">📂 Model</button>
           <button class="act-btn" id="btnShortcuts">⌨ Phím tắt</button>
         </div>
       </div>
@@ -495,6 +513,9 @@
       </div>
     </div>
 
+    <input id="imageInput" type="file" accept="image/*" hidden />
+    <input id="modelInput" type="file" accept=".glb,.gltf,.obj" hidden />
+
     <script type="importmap">
       {
         "imports": {
@@ -505,6 +526,6 @@
         }
       }
     </script>
-    <script type="module" src="./src/main.js"></script>
+    <script type="module" src="./src/main.js?v=20260521"></script>
   </body>
 </html>

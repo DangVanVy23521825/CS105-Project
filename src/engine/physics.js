@@ -21,6 +21,8 @@ export function createPhysicsEngine() {
   const defaultContactMaterial = experimentSelfContact;
 
   const collisionCallbacks = [];
+  const beginContactCallbacks = [];
+  const endContactCallbacks = [];
 
   world.addEventListener("postStep", () => {
     for (const contact of world.contacts) {
@@ -30,8 +32,24 @@ export function createPhysicsEngine() {
     }
   });
 
+  world.addEventListener("beginContact", (event) => {
+    for (const cb of beginContactCallbacks) cb(event);
+  });
+
+  world.addEventListener("endContact", (event) => {
+    for (const cb of endContactCallbacks) cb(event);
+  });
+
   function onCollision(callback) {
     collisionCallbacks.push(callback);
+  }
+
+  function onBeginContact(callback) {
+    beginContactCallbacks.push(callback);
+  }
+
+  function onEndContact(callback) {
+    endContactCallbacks.push(callback);
   }
 
   function update(stepOnce = false) {
@@ -64,6 +82,8 @@ export function createPhysicsEngine() {
     setGravity,
     setRestitution,
     setMaterialProps,
-    onCollision
+    onCollision,
+    onBeginContact,
+    onEndContact
   };
 }
